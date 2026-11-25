@@ -11,17 +11,56 @@
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端
 │   ├── src/views/WorkbenchView.vue|tsx  全部模块共享工作台
+│   ├── src/views/FormatTrialView.vue    换格式试写与新旧对照
+│   ├── src/views/FieldDefinitionsView.vue 字段定义版本与引用保护
 │   ├── src/data/modules.ts              18个业务模块配置
 │   ├── src/api/              统一请求封装
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
-│   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
-│   ├── app/services/<key>.py    每个模块独立领域逻辑
-│   ├── app/services/base.py     共享服务骨架
+│   ├── app/routers/resource.py    通用查询/导出/登记/动作接口
+│   ├── app/routers/governance.py  格式试写/发布清单/字段定义治理接口
+│   ├── app/services/<key>.py      每个模块独立领域逻辑
+│   ├── app/services/base.py       共享服务骨架
 │   └── app/store.py          内存数据仓库与示例数据
 ├── .gitignore
 └── docker-compose.yml
 ```
+
+## 换格式试写
+
+新表格式不再“启用即改写入策略”，而是先在候选格式 + 候选字段定义上跑样本：
+
+1. **草稿**：`POST /api/format-trials` 登记试写，同时生成一条格式发布清单记录；线上组合不动。
+2. **试写中**：`POST /api/format-trials/{id}/attempts` 每次实际写入尝试都会记录表名、候选格式、
+   字段定义编号与 revision，并分别保留 `passed_rows` 与 `rejected_rows`
+   （拒绝原因按“类型 / 缺列”分类计数）。
+3. **待确认**：`POST /api/format-trials/{id}/submit` 把结论回写发布清单，并标注支持生效的那一轮样本。
+4. **已生效**：`POST /api/format-trials/{id}/confirm` 校验字段定义未被修订、线上基线未变化后，
+   发布清单转 `已发布`，写入策略解析改为读取“格式 + 字段定义”组合。
+
+配套能力：
+
+- `POST /api/format-trials/{id}/compare`：同一批样本分别跑旧组合与候选格式，只预演不写入，
+  输出旧格式能写、候选会拒绝的行号。
+- `GET /api/format-trials/{id}/review`：复核当次采用的字段定义、被拒样本与下一次策略解析结果。
+- `GET /api/format-strategies/{table}`：按表解析线上写入策略；配置失败退回草稿时，
+  仍返回上一已确认组合，保证线上可恢复写入。
+- `POST /api/format-trials/{id}/retry`：确认失败后按最新字段定义登记新一轮试写。
+- `GET /api/format-conflicts`：字段版本冲突与多轮试写冲突的回查记录。
+
+## 字段定义治理
+
+字段定义是不可变版本（`DEF-xxxxxx`），每次字段变更推进主题 revision：
+
+- `POST /api/field-definitions` / `/{id}/amend`：发布或修订字段定义。
+- `GET /api/field-definitions/{id}/references`：查看被哪些在途试写、待确认发布、线上组合引用。
+- `POST /api/field-definitions/{id}/deprecate`：被引用时拒绝并列出引用来源；
+  `cancel_trials: true` 会先取消在途试写，成功后才允许废弃。
+
+确认生效时要求：最近一轮试写有通过行、字段定义指纹未变、主题 revision 与试写时一致、
+表上线上组合与试写登记时的基线一致。任何一项不满足都会让试写转“已失败”、
+配置退回“草稿”、发布清单记为“已驳回”，并保留失败原因与冲突记录。
+
 
 ## 启动
 
@@ -68,6 +107,7 @@ npm run dev
 | 变更日志 | `changelog` | 变更记录 | 记录编号、目标表、变更类型 |
 | 保留管理 | `retention` | 保留策略 | 策略编号、目标表、保留天数 |
 | 表格式 | `table_format` | 表格式配置 | 配置编号、目标表、表格式类型 |
+| 换格式试写 | `format-trials` | 格式试写 | 试写编号、候选格式、字段定义编号 |
 
 ## 约定
 

@@ -6,6 +6,22 @@
         <p class="page-desc">{{ meta.desc }}</p>
       </div>
       <div class="page-actions">
+        <RouterLink
+          v-if="meta.key === 'table_format'"
+          class="btn"
+          data-testid="open-format-trials"
+          to="/format-trials"
+        >
+          换格式试写
+        </RouterLink>
+        <RouterLink
+          v-if="meta.key === 'schema_govern'"
+          class="btn"
+          data-testid="open-field-definitions"
+          to="/field-definitions"
+        >
+          字段定义版本与引用
+        </RouterLink>
         <button class="btn primary" data-testid="open-create" type="button" @click="openCreate">
           登记{{ meta.entity }}
         </button>
